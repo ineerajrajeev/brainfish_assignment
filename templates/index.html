@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brainfish AI Chat</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #f4f4f9; 
+            min-height: 100vh;
+        }
+        h1 { 
+            color: #333; 
+            text-align: center; 
+            margin-bottom: 20px;
+        }
+        .chat-container { 
+            background: white; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            overflow: hidden; 
+            display: flex; 
+            flex-direction: column; 
+            height: 80vh; 
+            min-height: 500px;
+        }
+        .chat-history { 
+            flex: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+            background-color: #fafafa;
+        }
+        .message-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .message-wrapper.user {
+            align-items: flex-end;
+        }
+        .message-wrapper.bot {
+            align-items: flex-start;
+        }
+        .message { 
+            padding: 10px 15px; 
+            border-radius: 20px; 
+            max-width: 80%; 
+            line-height: 1.4; 
+            word-wrap: break-word;
+        }
+        .user-message { 
+            background-color: #007bff; 
+            color: white; 
+            border-bottom-right-radius: 5px; 
+        }
+        .bot-message { 
+            background-color: #e9ecef; 
+            color: #333; 
+            border-bottom-left-radius: 5px; 
+        }
+        .sources-btn {
+            padding: 5px 12px;
+            font-size: 12px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .sources-btn:hover {
+            background-color: #5a6268;
+        }
+        .sources-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+        .input-area { 
+            padding: 20px; 
+            background: #fff; 
+            border-top: 1px solid #eee; 
+            display: flex; 
+            gap: 10px; 
+        }
+        input[type="text"] { 
+            flex: 1; 
+            padding: 10px; 
+            border: 1px solid #ddd; 
+            border-radius: 5px; 
+            outline: none; 
+            font-size: 14px;
+        }
+        input[type="text"]:focus {
+            border-color: #007bff;
+        }
+        button { 
+            padding: 10px 20px; 
+            background-color: #007bff; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 14px;
+        }
+        button:hover { 
+            background-color: #0056b3; 
+        }
+        button:disabled { 
+            background-color: #ccc; 
+            cursor: not-allowed;
+        }
+        .loading { 
+            color: #888; 
+            font-style: italic; 
+            font-size: 0.9em; 
+            align-self: flex-start; 
+            margin-left: 15px; 
+            display: none; 
+        }
+        .error-message {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 20px;
+            display: none;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .modal-header h3 {
+            margin: 0;
+            color: #333;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            line-height: 1;
+        }
+        .modal-close:hover {
+            color: #333;
+        }
+        .source-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .source-item {
+            padding: 12px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #007bff;
+        }
+        .source-item:last-child {
+            margin-bottom: 0;
+        }
+        .source-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .source-meta {
+            font-size: 12px;
+            color: #666;
+        }
+        .no-sources {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Markdown styling */
+        .message h1, .message h2, .message h3, .message h4, .message h5, .message h6 {
+            margin-top: 0.5em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+        }
+        .message h1 { font-size: 1.5em; }
+        .message h2 { font-size: 1.3em; }
+        .message h3 { font-size: 1.1em; }
+        .message p {
+            margin: 0.5em 0;
+        }
+        .message ul, .message ol {
+            margin: 0.5em 0;
+            padding-left: 1.5em;
+        }
+        .message li {
+            margin: 0.25em 0;
+        }
+        .message code {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .message pre {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 0.8em;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 0.5em 0;
+        }
+        .message pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .message blockquote {
+            border-left: 3px solid rgba(0, 0, 0, 0.2);
+            padding-left: 1em;
+            margin: 0.5em 0;
+            font-style: italic;
+        }
+        .message a {
+            color: inherit;
+            text-decoration: underline;
+        }
+        .message table {
+            border-collapse: collapse;
+            margin: 0.5em 0;
+            width: 100%;
+        }
+        .message table th,
+        .message table td {
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            padding: 0.5em;
+        }
+        .message table th {
+            background-color: rgba(0, 0, 0, 0.1);
+            font-weight: 600;
+        }
+        .user-message code {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        .user-message pre {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+</head>
+<body>
+    <h1>Brainfish AI Assistant</h1>
+    <div class="error-message" id="errorMessage"></div>
+    <div class="chat-container">
+        <div class="chat-history" id="chatHistory">
+            <div class="message-wrapper bot">
+                <div class="message bot-message" id="initialMessage">Hello! How can I help you today?</div>
+            </div>
+        </div>
+        <div class="loading" id="loading">Thinking...</div>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()" id="sendBtn">Send</button>
+        </div>
+    </div>
+
+    <!-- Sources Modal -->
+    <div class="modal-overlay" id="sourcesModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Document Sources</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <ul class="source-list" id="sourceList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('Page loaded successfully');
+        
+        const chatHistory = document.getElementById('chatHistory');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const loading = document.getElementById('loading');
+        const errorMessage = document.getElementById('errorMessage');
+        const sourcesModal = document.getElementById('sourcesModal');
+        const sourceList = document.getElementById('sourceList');
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 5000);
+        }
+
+        function openModal(citations) {
+            sourceList.innerHTML = '';
+            
+            if (!citations || citations.length === 0) {
+                sourceList.innerHTML = '<p class="no-sources">No document sources available for this response.</p>';
+            } else {
+                // Get unique sources
+                const uniqueSources = {};
+                citations.forEach(citation => {
+                    const source = citation.source || 'unknown';
+                    const filename = citation.filename || null;
+                    const key = filename || source;
+                    
+                    if (!uniqueSources[key]) {
+                        uniqueSources[key] = {
+                            name: filename || source,
+                            source: source,
+                            user: citation.user,
+                            isPublic: citation.public || false,
+                            isSourceOfTruth: citation.source_of_truth || false
+                        };
+                    }
+                });
+                
+                Object.values(uniqueSources).forEach(src => {
+                    const li = document.createElement('li');
+                    li.className = 'source-item';
+                    
+                    let metaInfo = [];
+                    if (src.source) metaInfo.push(`Channel: ${src.source}`);
+                    if (src.user) metaInfo.push(`Author: ${src.user}`);
+                    if (src.isPublic) metaInfo.push('Public');
+                    if (src.isSourceOfTruth) metaInfo.push('Source of Truth');
+                    
+                    li.innerHTML = `
+                        <div class="source-name">${src.name}</div>
+                        <div class="source-meta">${metaInfo.join(' - ')}</div>
+                    `;
+                    sourceList.appendChild(li);
+                });
+            }
+            
+            sourcesModal.classList.add('active');
+        }
+
+        function closeModal() {
+            sourcesModal.classList.remove('active');
+        }
+
+        // Close modal when clicking outside
+        sourcesModal.addEventListener('click', (e) => {
+            if (e.target === sourcesModal) {
+                closeModal();
+            }
+        });
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        function appendMessage(text, isUser, citations = null) {
+            const wrapper = document.createElement('div');
+            wrapper.className = `message-wrapper ${isUser ? 'user' : 'bot'}`;
+            
+            const div = document.createElement('div');
+            div.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            
+            if (isUser) {
+                div.textContent = text;
+            } else {
+                try {
+                    marked.setOptions({
+                        breaks: true,
+                        gfm: true,
+                        headerIds: false,
+                        mangle: false
+                    });
+                    const html = marked.parse(text);
+                    div.innerHTML = DOMPurify.sanitize(html, {
+                        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                                      'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'table', 'thead', 
+                                      'tbody', 'tr', 'th', 'td', 'hr', 'img'],
+                        ALLOWED_ATTR: ['href', 'src', 'alt', 'title']
+                    });
+                } catch (e) {
+                    console.error('Markdown parsing error:', e);
+                    div.textContent = text;
+                }
+            }
+            
+            wrapper.appendChild(div);
+            
+            // Add sources button for bot messages with citations
+            if (!isUser && citations && citations.length > 0) {
+                const sourcesBtn = document.createElement('button');
+                sourcesBtn.className = 'sources-btn';
+                sourcesBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    View Sources (${citations.length})
+                `;
+                sourcesBtn.onclick = () => openModal(citations);
+                wrapper.appendChild(sourcesBtn);
+            }
+            
+            chatHistory.appendChild(wrapper);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            appendMessage(text, true);
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            loading.style.display = 'block';
+
+            try {
+                console.log('Sending message:', text);
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.error) {
+                    appendMessage("Error: " + data.error, false);
+                    showError(data.error);
+                } else {
+                    appendMessage(data.response, false, data.citations || []);
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                appendMessage("Failed to reach server. Make sure the Flask app is running.", false);
+                showError("Connection error: " + err.message);
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                loading.style.display = 'none';
+                userInput.focus();
+            }
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function initializeMarkdown() {
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                headerIds: false,
+                mangle: false
+            });
+            
+            const initialMsg = document.getElementById('initialMessage');
+            if (initialMsg) {
+                try {
+                    const html = marked.parse(initialMsg.textContent);
+                    initialMsg.innerHTML = DOMPurify.sanitize(html, {
+                        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                                      'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'table', 'thead', 
+                                      'tbody', 'tr', 'th', 'td', 'hr', 'img'],
+                        ALLOWED_ATTR: ['href', 'src', 'alt', 'title']
+                    });
+                } catch (e) {
+                    console.error('Error rendering initial message:', e);
+                }
+            }
+        }
+
+        window.addEventListener('load', async () => {
+            initializeMarkdown();
+            
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    console.log('Server is running');
+                } else {
+                    console.warn('Server health check failed');
+                }
+            } catch (err) {
+                console.error('Cannot reach server:', err);
+                showError('Cannot connect to server. Is the Flask app running?');
+            }
+        });
+    </script>
+</body>
+</html>
