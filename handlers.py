@@ -410,14 +410,37 @@ def handle_incoming_messages(message, say, client):
             return # STOP PROCESSING
 
         else:
-            logger.info("Mention - storing message to knowledge DB.")
+            logger.info("Mention - checking if message is worth storing.")
+            
+            # Quick check: very short messages or common greetings are likely NOISE
+            text_clean = text.strip().lower()
+            greeting_patterns = ["hey", "hi", "hello", "how are you", "what's up", "sup", "good morning", "good afternoon", "good evening"]
+            if len(text_clean.split()) <= 3 or any(text_clean.startswith(g) for g in greeting_patterns):
+                logger.info(f"Skipping mention - appears to be greeting/short message: {text[:50]}...")
+                return
+            
+            # Classify message to filter out NOISE
+            analysis = analyze_text_with_mlx(text)
+            classification = analysis.get("classification")
+            
+            if classification == "NOISE":
+                logger.info(f"Skipping mention classified as NOISE: {text[:50]}...")
+                return
+            
+            # Only store if classified as valuable content
+            if classification not in ['BUG', 'IDEA', 'FEEDBACK', 'DOCUMENT']:
+                logger.info(f"Skipping mention classified as {classification} (not valuable).")
+                return
+            
+            logger.info(f"Mention classified as {classification} - storing to knowledge DB.")
             if db is not None:
                 meta = {
                     "source": "mention",
                     "user": get_username(user, client),
                     "ts": ts,
                     "source_of_truth": False,
-                    "public": False
+                    "public": False,
+                    "classification": classification
                 }
                 knowledge_col.insert_one({
                     "text": text,

@@ -1,10 +1,10 @@
 import re
 import platform
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import SentenceTransformer
 from config import logger, MLX_MODEL_PATH, HF_MODEL_ID
 
-# --- AI Model Loading (Global Scope) ---
 embedding_model = None
+cross_encoder_model = None
 mlx_model = None
 mlx_tokenizer = None
 USE_MLX = False
@@ -14,7 +14,14 @@ try:
     embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
     logger.info("SentenceTransformer loaded.")
     
-    # MLX is only available on macOS with Apple Silicon
+    try:
+        from sentence_transformers import CrossEncoder
+        logger.info("Loading CrossEncoder model...")
+        cross_encoder_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        logger.info("CrossEncoder loaded.")
+    except Exception as e:
+        logger.warning(f"Failed to load CrossEncoder: {e}. Re-ranking will be disabled.")
+
     if platform.system() == "Darwin":
         try:
             from mlx_lm import load, generate as mlx_generate
@@ -40,14 +47,9 @@ def get_embedding(text):
     return embedding_model.encode(text).tolist()
 
 def analyze_text_with_mlx(text):
-    """
-    Classifies input to determine if it is worth indexing.
-    Returns classification: NOISE, DOCUMENT, BUG, IDEA, or FEEDBACK.
-    """
     logger.info(f"[AI] Analyzing for indexing worthiness: {text[:40]}...")
     
     if not USE_MLX or mlx_model is None:
-        # Fallback: simple keyword-based classification
         text_lower = text.lower()
         if any(kw in text_lower for kw in ["bug", "error", "crash", "fix", "broken"]):
             return {"classification": "BUG", "summary": text[:50]}
@@ -92,36 +94,32 @@ def analyze_text_with_mlx(text):
     logger.warning(f"Could not parse classification from: {cleaned[:50]}")
     return {"classification": "NOISE", "summary": text[:50]}
 
-def find_best_matches(query_embedding, docs, top_k=3, min_relevance=0.85):
-    """Finds the most relevant documents using cosine similarity."""
-    if not docs:
-        return []
+def rerank_documents(query, docs, top_k=3, min_score=-5.0):
+    if not docs or cross_encoder_model is None:
+        return docs[:top_k]
     
-    doc_vectors = [d['vector'] for d in docs if 'vector' in d and d['vector']]
-    doc_texts = [d['text'] for d in docs if 'vector' in d and d['vector']]
+    doc_texts = [d.get("text", "") for d in docs]
+    pairs = [[query, text] for text in doc_texts]
     
-    if not doc_vectors:
-        return []
-
-    scores = util.cos_sim(query_embedding, doc_vectors)[0]
+    scores = cross_encoder_model.predict(pairs)
     
-    score_text_pairs = []
-    for i, score in enumerate(scores):
-        score_val = score.item()
-        if score_val >= min_relevance:
-            score_text_pairs.append((score_val, doc_texts[i]))
+    scored_docs = list(zip(scores, docs))
     
-    if not score_text_pairs:
-        return []
+    scored_docs.sort(key=lambda x: x[0], reverse=True)
     
-    score_text_pairs.sort(key=lambda x: x[0], reverse=True)
-    return [pair[1] for pair in score_text_pairs[:top_k]]
+    logger.info(f"[Rerank] Cross-encoder scores: {[f'{s:.2f}' for s, _ in scored_docs[:5]]}")
+    
+    filtered_docs = [(s, d) for s, d in scored_docs if s >= min_score]
+    
+    if not filtered_docs:
+        logger.warning(f"[Rerank] All docs below threshold {min_score}, returning top {top_k} anyway")
+        return [doc for score, doc in scored_docs[:top_k]]
+    
+    return [doc for score, doc in filtered_docs[:top_k]]
 
 def generate_chat_response(query, context_texts):
-    """Generates a response using the model and retrieved context."""
     logger.info(f"[AI] Generating chat response for: {query[:30]}...")
 
-    # Log context details
     if context_texts:
         logger.info(f"[AI] Context received: {len(context_texts)} document(s)")
         for i, ctx in enumerate(context_texts):
@@ -130,7 +128,6 @@ def generate_chat_response(query, context_texts):
         logger.info("[AI] No context documents provided")
     
     if not USE_MLX or mlx_model is None:
-        # Fallback response without LLM - return context directly
         if context_texts:
             combined = "\n\n".join(context_texts[:3])
             return f"Based on the available knowledge:\n\n{combined[:1500]}"
@@ -139,10 +136,8 @@ def generate_chat_response(query, context_texts):
     from mlx_lm import generate
     
     if context_texts:
-        # Format context clearly with separators
         context_parts = []
         for i, text in enumerate(context_texts):
-            # Truncate very long contexts to avoid token limits
             truncated = text[:800] if len(text) > 800 else text
             context_parts.append(f"[Document {i+1}]\n{truncated}")
         context_block = "\n\n".join(context_parts)
@@ -160,7 +155,6 @@ def generate_chat_response(query, context_texts):
     
     prompt = f"<start_of_turn>user\n{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
     
-    # Log the prompt length for debugging
     logger.info(f"[AI] Prompt length: {len(prompt)} chars")
     
     try:
@@ -185,11 +179,9 @@ def generate_chat_response(query, context_texts):
     if "<end_of_turn>" in cleaned:
         cleaned = cleaned.split("<end_of_turn>")[0]
     
-    # Remove repetition patterns
     cleaned = re.sub(r'(.{30,}?)\1{2,}', r'\1', cleaned)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
     
-    # If model still returns empty or "I don't know", return context summary
     if not cleaned or len(cleaned) < 10 or "don't know" in cleaned.lower():
         logger.warning("[AI] Model returned empty/unhelpful response, using context summary")
         if context_texts:

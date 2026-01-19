@@ -2,3 +2,4 @@
 mlx_model
 .venv
 __pycache__
+.pytest_cache

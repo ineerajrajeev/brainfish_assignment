@@ -16,22 +16,22 @@ client = WebClient(token=os.environ.get("SLACK_BOT_TOKEN"), ssl=ssl_context)
 
 def list_channels():
     print("Fetching channel list from Slack...\n")
-
+    
     try:
         response = client.conversations_list(types="public_channel")
-
+        
         channels = response["channels"]
-
+        
         print(f"{'CHANNEL NAME':<25} | {'CHANNEL ID':<15}")
         print("-" * 45)
-
+        
         for channel in channels:
             name = channel["name"]
             id = channel["id"]
             is_member = channel["is_member"]
             member_status = "(Member)" if is_member else "(Not Member)"
             print(f"#{name:<24} | {id} {member_status}")
-
+            
     except SlackApiError as e:
         print(f"Error fetching channels: {e.response['error']}")
 

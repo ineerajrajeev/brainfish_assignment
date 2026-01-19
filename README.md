@@ -2,7 +2,9 @@
 
 A RAG (Retrieval-Augmented Generation) system that ingests Slack conversations and documents, stores them as embeddings in MongoDB, and provides Q&A with traceable citations and customer-safe mode.
 
-![Gemma MLX Model Ingestion Flow](docs/Gemma MLX Ingestion Flow-2026-01-14-142636.png)
+## Presentation
+
+[View Presentation Deck](https://www.canva.com/design/DAG-1ZWU9FM/40s0FEaGFK5W_Bfxq8ADzg/edit?utm_content=DAG-1ZWU9FM&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton)
 
 ## Features
 
@@ -20,7 +22,6 @@ A RAG (Retrieval-Augmented Generation) system that ingests Slack conversations a
 | Customer-safe citation policy | Yes |
 | Message edit/delete sync | Yes |
 | Deduplication (in-memory + DB) | Yes |
-| Docker support | Yes |
 | Unit tests | Yes |
 
 ## Quick Start
@@ -50,15 +51,7 @@ python main.py
 ```
 This starts both the Slack bot and Flask server on port 8000.
 
-### Docker
-
-```bash
-docker compose up --build
-```
-
-Services:
-- `app`: Python application (Slack bot + Flask API on `:8000`)
-- `mongo`: MongoDB 7 with persistent volume
+**Note**: Tests run automatically before application startup. The application will abort if any tests fail.
 
 ## REST API
 
@@ -82,6 +75,12 @@ Response:
   "response": "Based on the documentation...",
   "citations": [
     {"source": "docs", "filename": "api-guide.pdf", "public": true}
+  ],
+  "documents": [
+    {
+      "text": "Full document chunk text...",
+      "metadata": {"source": "docs", "filename": "api-guide.pdf", "public": true}
+    }
   ]
 }
 ```
@@ -130,6 +129,16 @@ Content classified as **NOISE** is discarded:
 - Message deletions remove corresponding entries from the database
 - Thread updates re-process the entire thread context
 
+## Retrieval Techniques
+
+The retrieval pipeline uses a hybrid scoring and reranking flow to reduce irrelevant context:
+
+1. **Vector similarity** using SentenceTransformer embeddings.
+2. **Keyword overlap scoring** with exact term boosts.
+3. **BM25 lexical search** (if available) for precise term matching.
+4. **Cross-encoder reranking** to refine the final top-k.
+5. **Relevance threshold** (`min_relevance`, default 0.45) to drop weak matches before the model sees them.
+
 ## Customer-Safe Citation Policy
 
 | Mode | Citable Sources | Behavior |
@@ -137,7 +146,7 @@ Content classified as **NOISE** is discarded:
 | `internal` | All sources | Cites any document |
 | `customer` | `public=True` or source in `{docs, tickets}` | Filters internal discussions |
 
-If no public sources meet the relevance threshold (30%), the system returns:
+If no public sources meet the relevance threshold (default 0.45), the system returns:
 ```json
 {"answer": "No relevant documents found.", "citations": []}
 ```
@@ -179,8 +188,6 @@ brainfish/
   - test_connectivity.py
   - test_llm.py
 - requirements.txt
-- Dockerfile
-- docker-compose.yml
 ```
 
 ## Tradeoffs & Limitations
@@ -194,8 +201,6 @@ brainfish/
 
 ## Next Steps
 
-1. **Hybrid retrieval**: Combine vector search with BM25 keyword matching
-2. **Reranking**: Add a cross-encoder reranker for better relevance
-3. **Incremental sync**: Periodic Slack history backfill
-4. **Evaluation harness**: Automated retrieval quality metrics
-5. **Policy tagging workflow**: Admin UI for marking sources as public/internal
+1. **Incremental sync**: Periodic Slack history backfill
+2. **Evaluation harness**: Automated retrieval quality metrics
+3. **Policy tagging workflow**: Admin UI for marking sources as public/internal
